@@ -1,0 +1,774 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "12794891380200361849"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "eastus3",
+      "metadata": {
+        "description": "Location for all resources. Default: East US 3 (eastus3)."
+      }
+    },
+    "prefix": {
+      "type": "string",
+      "defaultValue": "onprem",
+      "metadata": {
+        "description": "Prefix used for resource naming."
+      }
+    },
+    "hvhostName": {
+      "type": "string",
+      "defaultValue": "HVHOST",
+      "metadata": {
+        "description": "HVHOST virtual machine name."
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Admin username for HVHOST."
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Admin password for HVHOST."
+      }
+    },
+    "hvhostVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D32s_v5",
+      "metadata": {
+        "description": "VM size for HVHOST. Must support nested virtualization. Recommended: Standard_D32s_v5."
+      }
+    },
+    "hvhostWindowsSku": {
+      "type": "string",
+      "defaultValue": "2022-datacenter",
+      "allowedValues": [
+        "2022-datacenter",
+        "2022-datacenter-azure-edition",
+        "2019-datacenter"
+      ],
+      "metadata": {
+        "description": "Windows image SKU for HVHOST. Recommended: 2022-datacenter (Desktop Experience)."
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/16",
+      "metadata": {
+        "description": "Virtual network address space."
+      }
+    },
+    "azureVmsSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.1.0/24",
+      "metadata": {
+        "description": "Subnet for Azure VMs (where HVHOST NIC1 will be placed)."
+      }
+    },
+    "hypervLanSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/24",
+      "metadata": {
+        "description": "Subnet for Hyper-V LAN (HVHOST NIC2). Used as next hop for UDR."
+      }
+    },
+    "nestedSubnetPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.2.0/24",
+      "metadata": {
+        "description": "Nested (on-prem simulated) address space used inside HVHOST. Used by UDR."
+      }
+    },
+    "hvhostDataDiskSizeGB": {
+      "type": "int",
+      "defaultValue": 1024,
+      "minValue": 256,
+      "maxValue": 4095,
+      "metadata": {
+        "description": "Data disk size for HVHOST in GB (stores nested VMs, VHDs, ISOs)."
+      }
+    },
+    "enablePublicIp": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Enable a public IP for HVHOST. Keep false when using JIT + no direct RDP exposure."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {
+        "workload": "azure-onprem-nested-lab",
+        "owner": "lab"
+      },
+      "metadata": {
+        "description": "Resource tags applied to all resources."
+      }
+    }
+  },
+  "variables": {
+    "vnetName": "[format('{0}-vnet', parameters('prefix'))]",
+    "azureVmsSubnetName": "Azure-VMs",
+    "hypervLanSubnetName": "HyperV-LAN",
+    "udrName": "[format('{0}-udr-azurevms', parameters('prefix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', variables('vnetName'), variables('azureVmsSubnetName'))]",
+      "properties": {
+        "addressPrefix": "[parameters('azureVmsSubnetPrefix')]",
+        "routeTable": {
+          "id": "[reference(resourceId('Microsoft.Resources/deployments', 'udr'), '2025-04-01').outputs.routeTableId.value]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'network')]",
+        "[resourceId('Microsoft.Resources/deployments', 'udr')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "network",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[variables('vnetName')]"
+          },
+          "vnetAddressPrefix": {
+            "value": "[parameters('vnetAddressPrefix')]"
+          },
+          "azureVmsSubnetName": {
+            "value": "[variables('azureVmsSubnetName')]"
+          },
+          "azureVmsSubnetPrefix": {
+            "value": "[parameters('azureVmsSubnetPrefix')]"
+          },
+          "hypervLanSubnetName": {
+            "value": "[variables('hypervLanSubnetName')]"
+          },
+          "hypervLanSubnetPrefix": {
+            "value": "[parameters('hypervLanSubnetPrefix')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "14697581790077853220"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for network resources."
+              }
+            },
+            "vnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Virtual network name."
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet address space (CIDR)."
+              }
+            },
+            "azureVmsSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet name for Azure VMs (HVHOST NIC1)."
+              }
+            },
+            "azureVmsSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet prefix for Azure VMs (CIDR)."
+              }
+            },
+            "hypervLanSubnetName": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet name for Hyper-V LAN (HVHOST NIC2)."
+              }
+            },
+            "hypervLanSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Subnet prefix for Hyper-V LAN (CIDR)."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags applied to the VNet resource."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('vnetName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('azureVmsSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('azureVmsSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "[parameters('hypervLanSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('hypervLanSubnetPrefix')]"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the deployed VNet."
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+            },
+            "azureVmsSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Azure-VMs subnet."
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('azureVmsSubnetName'))]"
+            },
+            "hypervLanSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the HyperV-LAN subnet."
+              },
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('hypervLanSubnetName'))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "hvhost",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "hvhostName": {
+            "value": "[parameters('hvhostName')]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "hvhostVmSize": {
+            "value": "[parameters('hvhostVmSize')]"
+          },
+          "hvhostWindowsSku": {
+            "value": "[parameters('hvhostWindowsSku')]"
+          },
+          "azureVmsSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.azureVmsSubnetId.value]"
+          },
+          "hypervLanSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'network'), '2025-04-01').outputs.hypervLanSubnetId.value]"
+          },
+          "hvhostDataDiskSizeGB": {
+            "value": "[parameters('hvhostDataDiskSizeGB')]"
+          },
+          "enablePublicIp": {
+            "value": "[parameters('enablePublicIp')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "nestedSubnetPrefix": {
+            "value": "[parameters('nestedSubnetPrefix')]"
+          },
+          "hvhostSetupScriptUri": {
+            "value": "https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "13987432429021971600"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for compute resources."
+              }
+            },
+            "hvhostName": {
+              "type": "string",
+              "metadata": {
+                "description": "HVHOST virtual machine name."
+              }
+            },
+            "adminUsername": {
+              "type": "string",
+              "metadata": {
+                "description": "Admin username for HVHOST."
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Admin password for HVHOST."
+              }
+            },
+            "hvhostVmSize": {
+              "type": "string",
+              "metadata": {
+                "description": "VM size for HVHOST. Must support nested virtualization."
+              }
+            },
+            "hvhostWindowsSku": {
+              "type": "string",
+              "metadata": {
+                "description": "Windows Server image SKU (e.g., 2022-datacenter)."
+              }
+            },
+            "azureVmsSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure-VMs subnet resource ID (NIC1)."
+              }
+            },
+            "hypervLanSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "HyperV-LAN subnet resource ID (NIC2)."
+              }
+            },
+            "hvhostDataDiskSizeGB": {
+              "type": "int",
+              "metadata": {
+                "description": "Data disk size for HVHOST in GB (stores nested VMs, VHDs, ISOs)."
+              }
+            },
+            "enablePublicIp": {
+              "type": "bool",
+              "metadata": {
+                "description": "Enable a public IP for HVHOST. Use JIT to avoid always-open RDP."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags applied to resources."
+              }
+            },
+            "nestedSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Nested subnet prefix used inside HVHOST (used by bootstrap script). Example: 10.0.2.0/24"
+              }
+            },
+            "hvhostSetupScriptUri": {
+              "type": "string",
+              "defaultValue": "https://raw.githubusercontent.com/CHANGE_ME/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1",
+              "metadata": {
+                "description": "Raw URL to the hvhostsetup.ps1 script in your GitHub repo (raw.githubusercontent.com)."
+              }
+            }
+          },
+          "variables": {
+            "pipName": "[format('{0}-pip', toLower(parameters('hvhostName')))]",
+            "nic1Name": "[format('{0}-nic1', toLower(parameters('hvhostName')))]",
+            "nic2Name": "[format('{0}-nic2', toLower(parameters('hvhostName')))]",
+            "dataDiskName": "[format('{0}-datadisk', toLower(parameters('hvhostName')))]",
+            "extName": "bootstrap-hvhost"
+          },
+          "resources": [
+            {
+              "condition": "[parameters('enablePublicIp')]",
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('pipName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static"
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('nic1Name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "enableIPForwarding": true,
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Dynamic",
+                      "subnet": {
+                        "id": "[parameters('azureVmsSubnetId')]"
+                      },
+                      "publicIPAddress": "[if(parameters('enablePublicIp'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('pipName'))), null())]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('pipName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('nic2Name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "enableIPForwarding": true,
+                "ipConfigurations": [
+                  {
+                    "name": "ipconfig1",
+                    "properties": {
+                      "privateIPAllocationMethod": "Dynamic",
+                      "subnet": {
+                        "id": "[parameters('hypervLanSubnetId')]"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Compute/disks",
+              "apiVersion": "2024-07-01",
+              "name": "[variables('dataDiskName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "Premium_LRS"
+              },
+              "properties": {
+                "creationData": {
+                  "createOption": "Empty"
+                },
+                "diskSizeGB": "[parameters('hvhostDataDiskSizeGB')]"
+              }
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-07-01",
+              "name": "[parameters('hvhostName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('hvhostVmSize')]"
+                },
+                "osProfile": {
+                  "computerName": "[parameters('hvhostName')]",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[parameters('adminPassword')]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "MicrosoftWindowsServer",
+                    "offer": "WindowsServer",
+                    "sku": "[parameters('hvhostWindowsSku')]",
+                    "version": "latest"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "Premium_LRS"
+                    }
+                  },
+                  "dataDisks": [
+                    {
+                      "lun": 0,
+                      "name": "[variables('dataDiskName')]",
+                      "createOption": "Attach",
+                      "managedDisk": {
+                        "id": "[resourceId('Microsoft.Compute/disks', variables('dataDiskName'))]"
+                      }
+                    }
+                  ]
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic1Name'))]",
+                      "properties": {
+                        "primary": true
+                      }
+                    },
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic2Name'))]"
+                    }
+                  ]
+                },
+                "diagnosticsProfile": {
+                  "bootDiagnostics": {
+                    "enabled": true
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/disks', variables('dataDiskName'))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic1Name'))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic2Name'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines/extensions",
+              "apiVersion": "2024-07-01",
+              "name": "[format('{0}/{1}', parameters('hvhostName'), variables('extName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "publisher": "Microsoft.Compute",
+                "type": "CustomScriptExtension",
+                "typeHandlerVersion": "1.10",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                  "fileUris": [
+                    "[parameters('hvhostSetupScriptUri')]"
+                  ],
+                  "commandToExecute": "[format('powershell -ExecutionPolicy Bypass -File hvhostsetup.ps1 -NestedSubnetPrefix \"{0}\"', parameters('nestedSubnetPrefix'))]"
+                },
+                "protectedSettings": {}
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', parameters('hvhostName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "azureVmsNicPrivateIp": {
+              "type": "string",
+              "metadata": {
+                "description": "HVHOST private IP on Azure-VMs subnet (NIC1)."
+              },
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', variables('nic1Name')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            },
+            "hypervLanNicPrivateIp": {
+              "type": "string",
+              "metadata": {
+                "description": "HVHOST private IP on HyperV-LAN subnet (NIC2). Used as next hop for UDR."
+              },
+              "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', variables('nic2Name')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'network')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "udr",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "udrName": {
+            "value": "[variables('udrName')]"
+          },
+          "nestedSubnetPrefix": {
+            "value": "[parameters('nestedSubnetPrefix')]"
+          },
+          "nextHopIp": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'hvhost'), '2025-04-01').outputs.hypervLanNicPrivateIp.value]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.41.2.15936",
+              "templateHash": "11023957612507272196"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location for route table resource."
+              }
+            },
+            "udrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Route table name."
+              }
+            },
+            "nestedSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Nested subnet prefix used inside HVHOST (CIDR)."
+              }
+            },
+            "nextHopIp": {
+              "type": "string",
+              "metadata": {
+                "description": "Next hop IP for the nested subnet route (HVHOST NIC2)."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Tags applied to the route table."
+              }
+            },
+            "routeName": {
+              "type": "string",
+              "defaultValue": "to-nested-subnet",
+              "metadata": {
+                "description": "Route name."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/routeTables",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('udrName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "disableBgpRoutePropagation": false,
+                "routes": [
+                  {
+                    "name": "[parameters('routeName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('nestedSubnetPrefix')]",
+                      "nextHopType": "VirtualAppliance",
+                      "nextHopIpAddress": "[parameters('nextHopIp')]"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "routeTableId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/routeTables', parameters('udrName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'hvhost')]",
+        "[resourceId('Microsoft.Resources/deployments', 'network')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "hvhostVmName": {
+      "type": "string",
+      "metadata": {
+        "description": "HVHOST resource name."
+      },
+      "value": "[parameters('hvhostName')]"
+    },
+    "hvhostAzureVmsIp": {
+      "type": "string",
+      "metadata": {
+        "description": "HVHOST private IP on Azure-VMs subnet (NIC1)."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'hvhost'), '2025-04-01').outputs.azureVmsNicPrivateIp.value]"
+    },
+    "hvhostHypervLanIp": {
+      "type": "string",
+      "metadata": {
+        "description": "HVHOST private IP on HyperV-LAN subnet (NIC2)."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'hvhost'), '2025-04-01').outputs.hypervLanNicPrivateIp.value]"
+    },
+    "vnetDeployedName": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet name."
+      },
+      "value": "[variables('vnetName')]"
+    },
+    "nestedPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Nested subnet prefix used inside HVHOST."
+      },
+      "value": "[parameters('nestedSubnetPrefix')]"
+    }
+  }
+}
