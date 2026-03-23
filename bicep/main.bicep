@@ -122,6 +122,8 @@ module hvhost './modules/hvhost.bicep' = {
 
     // Used by the host bootstrap script to configure nested networking
     nestedSubnetPrefix: nestedSubnetPrefix
+
+    hvhostSetupScriptUri: 'https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1'
   }
   dependsOn: [
     network
