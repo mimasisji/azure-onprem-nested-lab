@@ -29,9 +29,6 @@ param hvhostVmSize string
 @description('Windows Server image SKU (e.g., 2022-datacenter).')
 param hvhostWindowsSku string
 
-@description('VNet resource ID (from network module).')
-param vnetId string
-
 @description('Azure-VMs subnet resource ID (NIC1).')
 param azureVmsSubnetId string
 

@@ -86,22 +86,6 @@ module network './modules/network.bicep' = {
   }
 }
 
-module udr './modules/udr.bicep' = {
-  name: 'udr'
-  params: {
-    location: location
-    udrName: udrName
-    // Route: nested subnet (10.0.2.0/24) via HVHOST NIC2 (10.0.0.4 by default from hvhost module output)
-    nestedSubnetPrefix: nestedSubnetPrefix
-    nextHopIp: hvhost.outputs.hypervLanNicPrivateIp
-    subnetIdToAssociate: network.outputs.azureVmsSubnetId
-    tags: tags
-  }
-  dependsOn: [
-    network
-  ]
-}
-
 module hvhost './modules/hvhost.bicep' = {
   name: 'hvhost'
   params: {
@@ -112,7 +96,6 @@ module hvhost './modules/hvhost.bicep' = {
     hvhostVmSize: hvhostVmSize
     hvhostWindowsSku: hvhostWindowsSku
 
-    vnetId: network.outputs.vnetId
     azureVmsSubnetId: network.outputs.azureVmsSubnetId
     hypervLanSubnetId: network.outputs.hypervLanSubnetId
 
@@ -127,6 +110,38 @@ module hvhost './modules/hvhost.bicep' = {
   }
   dependsOn: [
     network
+  ]
+}
+
+module udr './modules/udr.bicep' = {
+  name: 'udr'
+  params: {
+    location: location
+    udrName: udrName
+    nestedSubnetPrefix: nestedSubnetPrefix
+    nextHopIp: hvhost.outputs.hypervLanNicPrivateIp
+    tags: tags
+  }
+  dependsOn: [
+    network
+    hvhost
+  ]
+}
+
+// --------------------------
+// Associate Route Table to Subnet
+// --------------------------
+resource azureVmsSubnetRouteAssoc 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = {
+  name: '${vnetName}/${azureVmsSubnetName}'
+  properties: {
+    addressPrefix: azureVmsSubnetPrefix
+    routeTable: {
+      id: udr.outputs.routeTableId
+    }
+  }
+  dependsOn: [
+    network
+    udr
   ]
 }
 

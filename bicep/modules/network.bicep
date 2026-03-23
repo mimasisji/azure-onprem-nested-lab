@@ -28,9 +28,6 @@ param hypervLanSubnetPrefix string
 @description('Tags applied to the VNet resource.')
 param tags object
 
-// --------------------------
-// VNet
-// --------------------------
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
   location: location
@@ -58,9 +55,6 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   }
 }
 
-// --------------------------
-// Outputs
-// --------------------------
 @description('Resource ID of the deployed VNet.')
 output vnetId string = vnet.id
 
