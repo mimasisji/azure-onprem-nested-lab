@@ -337,6 +337,9 @@
           },
           "hvhostSetupScriptUri": {
             "value": "https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1"
+          },
+          "createNestedVmsScriptUri": {
+            "value": "https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/create-nestedvms.ps1"
           }
         },
         "template": {
@@ -427,6 +430,13 @@
               "defaultValue": "https://raw.githubusercontent.com/CHANGE_ME/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1",
               "metadata": {
                 "description": "Raw URL to the hvhostsetup.ps1 script in your GitHub repo (raw.githubusercontent.com)."
+              }
+            },
+            "createNestedVmsScriptUri": {
+              "type": "string",
+              "defaultValue": "https://raw.githubusercontent.com/CHANGE_ME/azure-onprem-nested-lab/main/scripts/create-nestedvms.ps1",
+              "metadata": {
+                "description": "Raw URL to the create-nestedvms.ps1 script in your GitHub repo (raw.githubusercontent.com)."
               }
             }
           },
@@ -590,7 +600,8 @@
                 "autoUpgradeMinorVersion": true,
                 "settings": {
                   "fileUris": [
-                    "[parameters('hvhostSetupScriptUri')]"
+                    "[parameters('hvhostSetupScriptUri')]",
+                    "[parameters('createNestedVmsScriptUri')]"
                   ],
                   "commandToExecute": "[format('powershell -ExecutionPolicy Bypass -File hvhostsetup.ps1 -NestedSubnetPrefix \"{0}\"', parameters('nestedSubnetPrefix'))]"
                 },

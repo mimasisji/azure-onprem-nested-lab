@@ -1,7 +1,7 @@
 param(
   [string]$SwitchName = "NestedSwitch",
-  [string]$VmRoot  = "F:\HyperV\VMs",
-  [string]$VhdRoot = "F:\HyperV\VHDs"
+  [string]$VmRoot  = "",
+  [string]$VhdRoot = ""
 )
 
 Set-StrictMode -Version Latest
@@ -9,16 +9,35 @@ $ErrorActionPreference = "Stop"
 
 function Write-Log($m) { Write-Host ("[{0}] {1}" -f (Get-Date -Format s), $m) }
 
-function Ensure-Folder($p) {
+function New-LabFolderIfMissing($p) {
   if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
 }
 
-function Ensure-Switch($name) {
+function Test-VMSwitchExists($name) {
   $sw = Get-VMSwitch -Name $name -ErrorAction SilentlyContinue
   if (-not $sw) { throw "No existe el vSwitch '$name'. Ejecuta hvhostsetup.ps1 primero." }
 }
 
-function Vm-Exists($name) {
+function Get-HyperVRootPath {
+  if (Test-Path "F:\HyperV") { return "F:\HyperV" }
+  if (Test-Path "C:\HyperV") { return "C:\HyperV" }
+  return "F:\HyperV"
+}
+
+function Add-VMDvdDriveIfMissing {
+  param([string]$VmName)
+
+  $dvd = Get-VMDvdDrive -VMName $VmName -ErrorAction SilentlyContinue
+  if ($dvd) {
+    Write-Log "VM $VmName ya tiene unidad DVD (skip)"
+    return
+  }
+
+  Add-VMDvdDrive -VMName $VmName | Out-Null
+  Write-Log "Unidad DVD agregada a $VmName"
+}
+
+function Test-VMExists($name) {
   return [bool](Get-VM -Name $name -ErrorAction SilentlyContinue)
 }
 
@@ -36,32 +55,37 @@ function New-Gen2Vm {
     [int]$ExtraTempDiskGB = 0
   )
 
-  if (Vm-Exists $Name) {
+  if (Test-VMExists $Name) {
     Write-Log "VM ya existe: $Name (skip)"
     return
   }
 
   $vmPath = Join-Path $VmRoot $Name
-  Ensure-Folder $vmPath
+  New-LabFolderIfMissing $vmPath
 
   $osVhd = Join-Path $VhdRoot ("{0}_OS.vhdx" -f $Name)
-  Ensure-Folder $VhdRoot
+  New-LabFolderIfMissing $VhdRoot
+
+  $startupBytes = $StartupMemoryMB * 1MB
+  $minBytes = $MinMemoryMB * 1MB
+  $maxBytes = $MaxMemoryMB * 1MB
+  $osDiskBytes = $OsDiskGB * 1GB
 
   Write-Log "Creando VM $Name (Gen2) en $vmPath"
-  New-VM -Name $Name -Generation 2 -MemoryStartupBytes (${StartupMemoryMB}MB) -Path $vmPath -SwitchName $SwitchName | Out-Null
+  New-VM -Name $Name -Generation 2 -MemoryStartupBytes $startupBytes -Path $vmPath -SwitchName $SwitchName | Out-Null
 
   # CPU
   Set-VMProcessor -VMName $Name -Count $CpuCount | Out-Null
 
   # Dynamic Memory
-  Set-VMMemory -VMName $Name -DynamicMemoryEnabled $true -MinimumBytes (${MinMemoryMB}MB) -StartupBytes (${StartupMemoryMB}MB) -MaximumBytes (${MaxMemoryMB}MB) | Out-Null
+  Set-VMMemory -VMName $Name -DynamicMemoryEnabled $true -MinimumBytes $minBytes -StartupBytes $startupBytes -MaximumBytes $maxBytes | Out-Null
 
   # OS disk
-  New-VHD -Path $osVhd -Dynamic -SizeBytes (${OsDiskGB}GB) | Out-Null
+  New-VHD -Path $osVhd -Dynamic -SizeBytes $osDiskBytes | Out-Null
   Add-VMHardDiskDrive -VMName $Name -Path $osVhd -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0 | Out-Null
 
   # DVD drive (sin ISO aún)
-  Add-VMDvdDrive -VMName $Name -ControllerNumber 0 -ControllerLocation 1 | Out-Null
+  Add-VMDvdDriveIfMissing -VmName $Name
 
   # Disable Secure Boot for Linux VM if requested
   if ($DisableSecureBoot) {
@@ -73,19 +97,19 @@ function New-Gen2Vm {
   $loc = 2
   if ($ExtraDataDiskGB -gt 0) {
     $d = Join-Path $VhdRoot ("{0}_DATA.vhdx" -f $Name)
-    New-VHD -Path $d -Dynamic -SizeBytes (${ExtraDataDiskGB}GB) | Out-Null
+    New-VHD -Path $d -Dynamic -SizeBytes ($ExtraDataDiskGB * 1GB) | Out-Null
     Add-VMHardDiskDrive -VMName $Name -Path $d -ControllerType SCSI -ControllerNumber 0 -ControllerLocation $loc | Out-Null
     $loc++
   }
   if ($ExtraLogDiskGB -gt 0) {
     $l = Join-Path $VhdRoot ("{0}_LOGS.vhdx" -f $Name)
-    New-VHD -Path $l -Dynamic -SizeBytes (${ExtraLogDiskGB}GB) | Out-Null
+    New-VHD -Path $l -Dynamic -SizeBytes ($ExtraLogDiskGB * 1GB) | Out-Null
     Add-VMHardDiskDrive -VMName $Name -Path $l -ControllerType SCSI -ControllerNumber 0 -ControllerLocation $loc | Out-Null
     $loc++
   }
   if ($ExtraTempDiskGB -gt 0) {
     $t = Join-Path $VhdRoot ("{0}_TEMPDB.vhdx" -f $Name)
-    New-VHD -Path $t -Dynamic -SizeBytes (${ExtraTempDiskGB}GB) | Out-Null
+    New-VHD -Path $t -Dynamic -SizeBytes ($ExtraTempDiskGB * 1GB) | Out-Null
     Add-VMHardDiskDrive -VMName $Name -Path $t -ControllerType SCSI -ControllerNumber 0 -ControllerLocation $loc | Out-Null
     $loc++
   }
@@ -95,9 +119,18 @@ function New-Gen2Vm {
 
 # -------- MAIN --------
 Write-Log "=== Creating nested VMs (Jump Start) ==="
-Ensure-Folder $VmRoot
-Ensure-Folder $VhdRoot
-Ensure-Switch $SwitchName
+
+if ([string]::IsNullOrWhiteSpace($VmRoot) -or [string]::IsNullOrWhiteSpace($VhdRoot)) {
+  $base = Get-HyperVRootPath
+  if ([string]::IsNullOrWhiteSpace($VmRoot)) { $VmRoot = Join-Path $base "VMs" }
+  if ([string]::IsNullOrWhiteSpace($VhdRoot)) { $VhdRoot = Join-Path $base "VHDs" }
+}
+
+Write-Log "Rutas en uso -> VmRoot: $VmRoot | VhdRoot: $VhdRoot"
+
+New-LabFolderIfMissing $VmRoot
+New-LabFolderIfMissing $VhdRoot
+Test-VMSwitchExists $SwitchName
 
 # DC01
 New-Gen2Vm -Name "DC01" -StartupMemoryMB 4096 -MinMemoryMB 2048 -MaxMemoryMB 8192 -CpuCount 2 -OsDiskGB 80

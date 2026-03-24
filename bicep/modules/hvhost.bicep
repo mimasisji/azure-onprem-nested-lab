@@ -50,6 +50,9 @@ param nestedSubnetPrefix string
 @description('Raw URL to the hvhostsetup.ps1 script in your GitHub repo (raw.githubusercontent.com).')
 param hvhostSetupScriptUri string = 'https://raw.githubusercontent.com/CHANGE_ME/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1'
 
+@description('Raw URL to the create-nestedvms.ps1 script in your GitHub repo (raw.githubusercontent.com).')
+param createNestedVmsScriptUri string = 'https://raw.githubusercontent.com/CHANGE_ME/azure-onprem-nested-lab/main/scripts/create-nestedvms.ps1'
+
 // --------------------------
 // Names
 // --------------------------
@@ -218,6 +221,7 @@ resource cse 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
     settings: {
       fileUris: [
         hvhostSetupScriptUri
+        createNestedVmsScriptUri
       ]
       commandToExecute: 'powershell -ExecutionPolicy Bypass -File hvhostsetup.ps1 -NestedSubnetPrefix "${nestedSubnetPrefix}"'
     }

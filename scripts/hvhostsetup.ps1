@@ -188,6 +188,45 @@ function Ensure-DataFolders {
   return $root
 }
 
+function Ensure-CreateNestedVmScript {
+  param([string]$RootPath)
+
+  $destDir = Join-Path $RootPath "Scripts"
+  if (-not (Test-Path $destDir)) {
+    New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+  }
+
+  $dest = Join-Path $destDir "create-nestedvms.ps1"
+
+  $sources = @()
+
+  # Preferred source: same directory as this bootstrap script (CSE download folder).
+  $localDir = Split-Path -Path $PSCommandPath -Parent
+  $localCopy = Join-Path $localDir "create-nestedvms.ps1"
+  if (Test-Path $localCopy) {
+    $sources += $localCopy
+  }
+
+  # Fallback source: search known Custom Script Extension download roots.
+  $cseRoot = "C:\Packages\Plugins\Microsoft.Compute.CustomScriptExtension"
+  if (Test-Path $cseRoot) {
+    $found = Get-ChildItem -Path $cseRoot -Filter "create-nestedvms.ps1" -Recurse -ErrorAction SilentlyContinue |
+             Sort-Object LastWriteTime -Descending |
+             Select-Object -First 1
+    if ($found) {
+      $sources += $found.FullName
+    }
+  }
+
+  $src = $sources | Select-Object -First 1
+  if ($src) {
+    Copy-Item -Path $src -Destination $dest -Force
+    Write-Log ("Script staged: {0}" -f $dest)
+  } else {
+    Write-Log "WARNING: No se encontró create-nestedvms.ps1 en el host. Descárgalo manualmente antes de crear las VMs nested."
+  }
+}
+
 function Ensure-WindowsFeatures {
   Write-Log "Instalando roles/features necesarios (Hyper-V, RemoteAccess/Routing)..."
   $features = @(
@@ -363,6 +402,7 @@ Ensure-DataDiskF
 
 $root = Ensure-DataFolders
 Write-Log ("Carpetas Hyper-V listas en: {0}" -f $root)
+Ensure-CreateNestedVmScript -RootPath $root
 
 $needsRestart = Ensure-WindowsFeatures
 

@@ -107,6 +107,7 @@ module hvhost './modules/hvhost.bicep' = {
     nestedSubnetPrefix: nestedSubnetPrefix
 
     hvhostSetupScriptUri: 'https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/hvhostsetup.ps1'
+    createNestedVmsScriptUri: 'https://raw.githubusercontent.com/mimasisji/azure-onprem-nested-lab/main/scripts/create-nestedvms.ps1'
   }
   dependsOn: [
     network
